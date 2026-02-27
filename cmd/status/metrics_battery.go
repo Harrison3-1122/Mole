@@ -20,8 +20,8 @@ var (
 )
 
 const (
-	maxSystemPowerMilliwatts = 1000000 // 1000W
-	maxBatteryPowerMilliwatts = 200000 // 200W
+	maxSystemPowerMilliwatts  = 1000000 // 1000W
+	maxBatteryPowerMilliwatts = 200000  // 200W
 )
 
 func collectBatteries() (batts []BatteryStatus, err error) {
