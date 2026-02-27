@@ -19,6 +19,11 @@ var (
 	powerCacheTTL = 30 * time.Second
 )
 
+const (
+	maxSystemPowerMilliwatts = 1000000 // 1000W
+	maxBatteryPowerMilliwatts = 200000 // 200W
+)
+
 func collectBatteries() (batts []BatteryStatus, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -227,40 +232,22 @@ func collectThermal() ThermalStatus {
 				valStr = strings.TrimSpace(valStr)
 				if powerMW, err := strconv.ParseFloat(valStr, 64); err == nil {
 					// SystemPower should always be positive, reject invalid values
-					if powerMW >= 0 && powerMW < 1000000 { // 0 to 1000W
+					if powerMW >= 0 && powerMW < maxSystemPowerMilliwatts {
 						thermal.SystemPower = powerMW / 1000.0
 					}
 				}
 			}
 
-			// Battery power (mW -> W, positive = discharging, negative = charging).
+			// BatteryPower from ioreg is battery-centric:
+			// positive = charging (power into battery), negative = discharging.
+			// Convert to internal convention: positive = discharging.
 			if _, after, found := strings.Cut(line, "\"BatteryPower\"="); found {
 				valStr := strings.TrimSpace(after)
 				valStr, _, _ = strings.Cut(valStr, ",")
 				valStr, _, _ = strings.Cut(valStr, "}")
 				valStr = strings.TrimSpace(valStr)
-
-				var powerMW float64
-				var parsed bool
-
-				// Strategy 1: Try parsing as a signed integer first.
-				// This handles standard positive values and explicit negative strings like "-12345".
-				if valInt, err := strconv.ParseInt(valStr, 10, 64); err == nil {
-					powerMW = float64(valInt)
-					parsed = true
-				} else if valUint, err := strconv.ParseUint(valStr, 10, 64); err == nil {
-					// Strategy 2: Try parsing as an unsigned integer (Two's Complement).
-					// ioreg often returns negative values as huge uint64 numbers (e.g. 2^64 - 100).
-					// Casting such a uint64 to int64 correctly restores the negative value.
-					powerMW = float64(int64(valUint))
-					parsed = true
-				}
-
-				if parsed {
-					// Validate reasonable battery power range: -200W to 200W
-					if powerMW > -200000 && powerMW < 200000 {
-						thermal.BatteryPower = powerMW / 1000.0
-					}
+				if batteryPower, ok := parseBatteryPower(valStr); ok {
+					thermal.BatteryPower = batteryPower
 				}
 			}
 		}
@@ -280,4 +267,27 @@ func collectThermal() ThermalStatus {
 	}
 
 	return thermal
+}
+
+func parseBatteryPower(valStr string) (float64, bool) {
+	var rawMilliwatts int64
+
+	// First try signed values.
+	if valInt, err := strconv.ParseInt(valStr, 10, 64); err == nil {
+		rawMilliwatts = valInt
+	} else if valUint, err := strconv.ParseUint(valStr, 10, 64); err == nil {
+		// ioreg can return negative values as uint64 (two's complement).
+		rawMilliwatts = int64(valUint)
+	} else {
+		return 0, false
+	}
+
+	// Convert battery-centric sign to system-centric sign:
+	// discharging becomes positive for display/health logic.
+	systemMilliwatts := -rawMilliwatts
+	if systemMilliwatts < -maxBatteryPowerMilliwatts || systemMilliwatts > maxBatteryPowerMilliwatts {
+		return 0, false
+	}
+
+	return float64(systemMilliwatts) / 1000.0, true
 }
