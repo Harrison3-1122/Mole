@@ -1083,6 +1083,48 @@ func TestModelViewErrorRendersSingleMole(t *testing.T) {
 	}
 }
 
+func TestRenderBatteryCardShowsReasonableDischargingPower(t *testing.T) {
+	card := renderBatteryCard([]BatteryStatus{
+		{
+			Percent:  97.0,
+			Status:   "discharging",
+			TimeLeft: "10:43",
+		},
+	}, ThermalStatus{
+		BatteryPower: 17.8,
+	})
+
+	if len(card.lines) < 2 {
+		t.Fatalf("renderBatteryCard() expected at least 2 lines, got %d", len(card.lines))
+	}
+
+	statusLine := stripANSI(card.lines[1])
+	if !strings.Contains(statusLine, "Discharging · 10:43 · 18W") {
+		t.Fatalf("renderBatteryCard() expected reasonable power text, got %q", statusLine)
+	}
+}
+
+func TestRenderBatteryCardHidesAbnormalDischargingPower(t *testing.T) {
+	card := renderBatteryCard([]BatteryStatus{
+		{
+			Percent:  97.0,
+			Status:   "discharging",
+			TimeLeft: "10:43",
+		},
+	}, ThermalStatus{
+		BatteryPower: 18446744073709544,
+	})
+
+	if len(card.lines) < 2 {
+		t.Fatalf("renderBatteryCard() expected at least 2 lines, got %d", len(card.lines))
+	}
+
+	statusLine := stripANSI(card.lines[1])
+	if strings.Contains(statusLine, "W") {
+		t.Fatalf("renderBatteryCard() should hide abnormal power values, got %q", statusLine)
+	}
+}
+
 func stripANSI(s string) string {
 	var result strings.Builder
 	i := 0

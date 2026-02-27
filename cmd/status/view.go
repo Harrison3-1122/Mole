@@ -21,15 +21,17 @@ var (
 )
 
 const (
-	colWidth    = 38
-	iconCPU     = "◉"
-	iconMemory  = "◫"
-	iconGPU     = "◧"
-	iconDisk    = "▥"
-	iconNetwork = "⇅"
-	iconBattery = "◪"
-	iconSensors = "◈"
-	iconProcs   = "❊"
+	colWidth                = 38
+	maxDisplayBatteryPowerW = 200.0
+	maxDisplaySystemPowerW  = 1000.0
+	iconCPU                 = "◉"
+	iconMemory              = "◫"
+	iconGPU                 = "◧"
+	iconDisk                = "▥"
+	iconNetwork             = "⇅"
+	iconBattery             = "◪"
+	iconSensors             = "◈"
+	iconProcs               = "❊"
 )
 
 // Mole body frames (facing right).
@@ -597,12 +599,12 @@ func renderBatteryCard(batts []BatteryStatus, thermal ThermalStatus) cardData {
 		}
 		// Add power info.
 		if statusLower == "charging" || statusLower == "charged" {
-			if thermal.SystemPower > 0 {
+			if shouldDisplayPower(thermal.SystemPower, maxDisplaySystemPowerW) {
 				statusText += fmt.Sprintf(" · %.0fW", thermal.SystemPower)
-			} else if thermal.AdapterPower > 0 {
+			} else if shouldDisplayPower(thermal.AdapterPower, maxDisplaySystemPowerW) {
 				statusText += fmt.Sprintf(" · %.0fW Adapter", thermal.AdapterPower)
 			}
-		} else if thermal.BatteryPower > 0 {
+		} else if shouldDisplayPower(thermal.BatteryPower, maxDisplayBatteryPowerW) {
 			// Only show battery power when discharging (positive value)
 			statusText += fmt.Sprintf(" · %.0fW", thermal.BatteryPower)
 		}
@@ -631,6 +633,10 @@ func renderBatteryCard(batts []BatteryStatus, thermal ThermalStatus) cardData {
 	}
 
 	return cardData{icon: iconBattery, title: "Power", lines: lines}
+}
+
+func shouldDisplayPower(powerW float64, maxPowerW float64) bool {
+	return powerW > 0 && powerW <= maxPowerW
 }
 
 func renderCard(data cardData, width int, height int) string {
